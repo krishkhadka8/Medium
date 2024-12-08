@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client/edge";
 import { withAccelerate } from "@prisma/extension-accelerate";
+import { createBlogInput, updateBlogInput } from "@raavan/medium-common";
 import { Hono } from "hono";
 import { decode, sign, verify } from "hono/jwt";
 
@@ -16,25 +17,40 @@ export const blogRouter = new Hono<{
 blogRouter.use("/*", async(c, next) =>{
     const authHeader = c.req.header("authorization") || "";
     const user = await verify(authHeader, c.env.JWT_SECRET);
-    if(user){
-        c.set("userId", user.id);
-        //console.log(user.id);
-        await next();
-    }else{
+    try {
+        if(user){
+            c.set("userId", user.id);
+            //console.log(user.id);
+            await next();
+        }else{
+            c.status(403);
+            return c.json({
+                message:"You are not logged in"
+            })
+        }
+    } catch (e) {
         c.status(403);
         return c.json({
-            message:"You are not logged in"
+            message: "You are not logge in"
         })
-    }
+    }    
 })
 
 blogRouter.post('/', async (c) => {
-   const authorId= c.get('userId');
+    const body = await c.req.json();
+    const authorId= c.get('userId');
+    const { success } = createBlogInput.safeParse(body);
+    if(!success){
+        c.status(411);
+        return c.json({
+            message:"Inputs are not correct"
+        })
+    }
 	const prisma = new PrismaClient({
 		datasourceUrl: c.env?.DATABASE_URL	,
 	}).$extends(withAccelerate());
 
-	const body = await c.req.json();
+	
 	const blog = await prisma.blog.create({
 		data: {
 			title: body.title,
@@ -50,6 +66,13 @@ blogRouter.post('/', async (c) => {
 blogRouter.put('/:id', async (c) => {
     const id = c.req.param("id");
     const body = await c.req.json();
+    const { success } = updateBlogInput.safeParse(body);
+    if(!success){
+        c.status(411);
+        return c.json({
+            message:"Inpust not correct"
+        })
+    }
 
 	const prisma = new PrismaClient({
 		datasourceUrl: c.env?.DATABASE_URL	,
